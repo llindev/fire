@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fire</title>
+  <title>FIRE Calculator — Path to Financial Freedom</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <style>
     * {
       margin: 0;
@@ -11,37 +12,835 @@
       box-sizing: border-box;
     }
 
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #242834;
+      --border: #2e3240;
+      --text: #e4e4e7;
+      --text-muted: #9ca3af;
+      --accent: #f97316;
+      --accent-hover: #fb923c;
+      --green: #22c55e;
+      --red: #ef4444;
+      --blue: #3b82f6;
+      --purple: #a855f7;
+      --cyan: #06b6d4;
+      --pink: #ec4899;
+      --yellow: #eab308;
+      --radius: 12px;
+    }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       line-height: 1.6;
-      color: #333;
-      max-width: 720px;
-      margin: 0 auto;
-      padding: 2rem 1rem;
+      color: var(--text);
+      background: var(--bg);
+      min-height: 100vh;
     }
 
-    h1 {
-      font-size: 2rem;
-      margin-bottom: 0.5rem;
+    /* Header */
+    .header {
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
     }
 
-    p {
+    .header h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .header span {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+    }
+
+    /* Layout */
+    .app {
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      height: calc(100vh - 57px);
+    }
+
+    /* Sidebar */
+    .sidebar {
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 0.75rem;
+    }
+
+    /* Form controls */
+    .field {
+      margin-bottom: 0.75rem;
+    }
+
+    .field label {
+      display: block;
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+      margin-bottom: 0.25rem;
+    }
+
+    .field input, .field select {
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.875rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .field input:focus, .field select:focus {
+      border-color: var(--accent);
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    .row-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    /* Asset cards */
+    .asset-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem;
+      position: relative;
+    }
+
+    .asset-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+    }
+
+    .asset-card-header-left {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .asset-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .asset-card-title {
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+
+    .btn-remove {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 1.125rem;
+      line-height: 1;
+      padding: 0.25rem;
+      border-radius: 4px;
+      transition: color 0.15s, background 0.15s;
+    }
+
+    .btn-remove:hover {
+      color: var(--red);
+      background: rgba(239, 68, 68, 0.1);
+    }
+
+    /* Add asset button */
+    .btn-add {
+      width: 100%;
+      padding: 0.625rem;
+      background: transparent;
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .btn-add:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Asset type selector modal */
+    .asset-type-menu {
+      display: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .asset-type-menu.show {
+      display: block;
+    }
+
+    .asset-type-option {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      padding: 0.5rem 0.75rem;
+      border: none;
+      background: transparent;
+      color: var(--text);
+      font-size: 0.8125rem;
+      cursor: pointer;
+      width: 100%;
+      border-radius: 8px;
+      transition: background 0.15s;
+    }
+
+    .asset-type-option:hover {
+      background: var(--surface2);
+    }
+
+    .asset-type-option .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    /* Main content */
+    .main {
+      overflow-y: auto;
+      padding: 1.5rem 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    /* Summary cards */
+    .summary-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+    }
+
+    .summary-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.25rem;
+    }
+
+    .summary-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      margin-bottom: 0.25rem;
+    }
+
+    .summary-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+
+    .summary-sub {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 0.125rem;
+    }
+
+    .text-green { color: var(--green); }
+    .text-accent { color: var(--accent); }
+    .text-blue { color: var(--blue); }
+    .text-purple { color: var(--purple); }
+
+    /* Chart container */
+    .chart-container {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      flex: 1;
+      min-height: 400px;
+      position: relative;
+    }
+
+    .chart-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       margin-bottom: 1rem;
-      color: #555;
     }
 
-    a {
-      color: #0366d6;
-      text-decoration: none;
+    .chart-title {
+      font-size: 1rem;
+      font-weight: 600;
     }
 
-    a:hover {
-      text-decoration: underline;
+    .chart-legend {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .chart-wrap {
+      position: relative;
+      height: calc(100% - 40px);
+      min-height: 350px;
+    }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .app {
+        grid-template-columns: 1fr;
+        height: auto;
+      }
+
+      .sidebar {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .summary-row {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 500px) {
+      .summary-row {
+        grid-template-columns: 1fr;
+      }
+
+      .row {
+        grid-template-columns: 1fr;
+      }
+
+      .row-3 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 3px;
     }
   </style>
 </head>
 <body>
-  <h1>Fire</h1>
-  <p>Welcome — this site is under construction.</p>
+
+  <div class="header">
+    <h1>FIRE Calculator</h1>
+    <span>Simulate your path to financial independence</span>
+  </div>
+
+  <div class="app">
+    <!-- Sidebar: inputs -->
+    <div class="sidebar">
+
+      <!-- Personal Info -->
+      <div>
+        <div class="section-title">Personal Info</div>
+        <div class="row">
+          <div class="field">
+            <label for="currentAge">Current age</label>
+            <input type="number" id="currentAge" value="30" min="18" max="80">
+          </div>
+          <div class="field">
+            <label for="retireAge">Target retire age</label>
+            <input type="number" id="retireAge" value="50" min="25" max="100">
+          </div>
+        </div>
+        <div class="field">
+          <label for="monthlyExpenses">Monthly expenses ($)</label>
+          <input type="number" id="monthlyExpenses" value="4000" min="0" step="100">
+        </div>
+        <div class="field">
+          <label for="safeWithdrawal">Safe withdrawal rate (%)</label>
+          <input type="number" id="safeWithdrawal" value="4" min="1" max="10" step="0.25">
+        </div>
+      </div>
+
+      <!-- Assets -->
+      <div>
+        <div class="section-title">Assets</div>
+        <div id="assetList"></div>
+
+        <button class="btn-add" id="btnAddAsset">+ Add Asset</button>
+        <div class="asset-type-menu" id="assetTypeMenu">
+          <button class="asset-type-option" data-type="stocks">
+            <span class="dot" style="background: var(--blue)"></span>
+            Stocks / Index Funds
+          </button>
+          <button class="asset-type-option" data-type="bonds">
+            <span class="dot" style="background: var(--cyan)"></span>
+            Bonds / Fixed Income
+          </button>
+          <button class="asset-type-option" data-type="real_estate">
+            <span class="dot" style="background: var(--green)"></span>
+            Real Estate
+          </button>
+          <button class="asset-type-option" data-type="savings">
+            <span class="dot" style="background: var(--yellow)"></span>
+            Savings / Cash
+          </button>
+          <button class="asset-type-option" data-type="retirement">
+            <span class="dot" style="background: var(--purple)"></span>
+            401k / IRA
+          </button>
+          <button class="asset-type-option" data-type="crypto">
+            <span class="dot" style="background: var(--pink)"></span>
+            Crypto
+          </button>
+          <button class="asset-type-option" data-type="custom">
+            <span class="dot" style="background: var(--text-muted)"></span>
+            Custom Asset
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main: chart + summary -->
+    <div class="main">
+      <div class="summary-row">
+        <div class="summary-card">
+          <div class="summary-label">FIRE Number</div>
+          <div class="summary-value text-accent" id="fireNumber">$0</div>
+          <div class="summary-sub">25x annual expenses</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">FIRE Date</div>
+          <div class="summary-value text-green" id="fireDate">—</div>
+          <div class="summary-sub" id="fireYearsAway">Add assets to simulate</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Projected Net Worth</div>
+          <div class="summary-value text-blue" id="projectedNW">$0</div>
+          <div class="summary-sub" id="projectedLabel">at retirement</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Monthly Passive Income</div>
+          <div class="summary-value text-purple" id="passiveIncome">$0</div>
+          <div class="summary-sub">at retirement (SWR)</div>
+        </div>
+      </div>
+
+      <div class="chart-container">
+        <div class="chart-header">
+          <div class="chart-title">Net Worth Projection</div>
+          <div class="chart-legend" id="chartLegend"></div>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="projectionChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+// ── Asset type definitions ──
+const ASSET_TYPES = {
+  stocks: {
+    label: 'Stocks / Index Funds',
+    color: '#3b82f6',
+    defaults: { balance: 50000, monthly: 1000, returnRate: 10 }
+  },
+  bonds: {
+    label: 'Bonds / Fixed Income',
+    color: '#06b6d4',
+    defaults: { balance: 10000, monthly: 500, returnRate: 5 }
+  },
+  real_estate: {
+    label: 'Real Estate',
+    color: '#22c55e',
+    defaults: { balance: 200000, monthly: 0, returnRate: 7 }
+  },
+  savings: {
+    label: 'Savings / Cash',
+    color: '#eab308',
+    defaults: { balance: 20000, monthly: 500, returnRate: 4 }
+  },
+  retirement: {
+    label: '401k / IRA',
+    color: '#a855f7',
+    defaults: { balance: 60000, monthly: 1500, returnRate: 9 }
+  },
+  crypto: {
+    label: 'Crypto',
+    color: '#ec4899',
+    defaults: { balance: 5000, monthly: 200, returnRate: 15 }
+  },
+  custom: {
+    label: 'Custom Asset',
+    color: '#9ca3af',
+    defaults: { balance: 0, monthly: 0, returnRate: 7 }
+  }
+};
+
+// ── State ──
+let assets = [];
+let nextId = 1;
+let chart = null;
+
+// ── DOM refs ──
+const assetList = document.getElementById('assetList');
+const btnAdd = document.getElementById('btnAddAsset');
+const typeMenu = document.getElementById('assetTypeMenu');
+
+// ── Toggle asset type menu ──
+btnAdd.addEventListener('click', () => {
+  typeMenu.classList.toggle('show');
+});
+
+document.querySelectorAll('.asset-type-option').forEach(btn => {
+  btn.addEventListener('click', () => {
+    addAsset(btn.dataset.type);
+    typeMenu.classList.remove('show');
+  });
+});
+
+// ── Add asset ──
+function addAsset(type) {
+  const def = ASSET_TYPES[type];
+  const asset = {
+    id: nextId++,
+    type,
+    label: def.label,
+    color: def.color,
+    balance: def.defaults.balance,
+    monthly: def.defaults.monthly,
+    returnRate: def.defaults.returnRate
+  };
+  assets.push(asset);
+  renderAssets();
+  recalculate();
+}
+
+// ── Remove asset ──
+function removeAsset(id) {
+  assets = assets.filter(a => a.id !== id);
+  renderAssets();
+  recalculate();
+}
+
+// ── Render asset cards ──
+function renderAssets() {
+  assetList.innerHTML = assets.map(a => `
+    <div class="asset-card" style="margin-bottom: 0.75rem;">
+      <div class="asset-card-header">
+        <div class="asset-card-header-left">
+          <span class="asset-dot" style="background: ${a.color}"></span>
+          <span class="asset-card-title">${a.type === 'custom' ? `<input type="text" value="${a.label}" data-id="${a.id}" data-field="label" style="background:transparent;border:none;color:var(--text);font-size:0.875rem;font-weight:600;width:120px;outline:none;">` : a.label}</span>
+        </div>
+        <button class="btn-remove" onclick="removeAsset(${a.id})">&times;</button>
+      </div>
+      <div class="row-3">
+        <div class="field">
+          <label>Balance ($)</label>
+          <input type="number" value="${a.balance}" data-id="${a.id}" data-field="balance" min="0" step="1000">
+        </div>
+        <div class="field">
+          <label>Monthly ($)</label>
+          <input type="number" value="${a.monthly}" data-id="${a.id}" data-field="monthly" min="0" step="100">
+        </div>
+        <div class="field">
+          <label>Return (%/yr)</label>
+          <input type="number" value="${a.returnRate}" data-id="${a.id}" data-field="returnRate" min="-20" max="50" step="0.5">
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  // Attach event listeners
+  assetList.querySelectorAll('input[data-id]').forEach(input => {
+    input.addEventListener('input', (e) => {
+      const id = parseInt(e.target.dataset.id);
+      const field = e.target.dataset.field;
+      const asset = assets.find(a => a.id === id);
+      if (!asset) return;
+      if (field === 'label') {
+        asset.label = e.target.value;
+      } else {
+        asset[field] = parseFloat(e.target.value) || 0;
+      }
+      recalculate();
+    });
+  });
+}
+
+// ── Projection engine ──
+function computeProjection() {
+  const currentAge = parseInt(document.getElementById('currentAge').value) || 30;
+  const retireAge = parseInt(document.getElementById('retireAge').value) || 50;
+  const monthlyExpenses = parseFloat(document.getElementById('monthlyExpenses').value) || 0;
+  const swr = parseFloat(document.getElementById('safeWithdrawal').value) || 4;
+
+  const years = Math.max(retireAge - currentAge, 1);
+  const totalMonths = years * 12;
+  const fireNumber = (monthlyExpenses * 12) / (swr / 100);
+
+  // Per-asset month-by-month projection
+  const assetTimelines = assets.map(asset => {
+    const monthlyReturn = Math.pow(1 + asset.returnRate / 100, 1 / 12) - 1;
+    const values = [asset.balance];
+    let current = asset.balance;
+    for (let m = 1; m <= totalMonths; m++) {
+      current = current * (1 + monthlyReturn) + asset.monthly;
+      values.push(current);
+    }
+    return { asset, values };
+  });
+
+  // Total net worth per month
+  const totalValues = [];
+  for (let m = 0; m <= totalMonths; m++) {
+    let sum = 0;
+    assetTimelines.forEach(tl => { sum += tl.values[m]; });
+    totalValues.push(sum);
+  }
+
+  // Find FIRE month
+  let fireMonth = -1;
+  for (let m = 0; m <= totalMonths; m++) {
+    if (totalValues[m] >= fireNumber) {
+      fireMonth = m;
+      break;
+    }
+  }
+
+  // Sample yearly for chart labels
+  const labels = [];
+  for (let y = 0; y <= years; y++) {
+    labels.push(currentAge + y);
+  }
+
+  const yearlyAssetData = assetTimelines.map(tl => {
+    const yearly = [];
+    for (let y = 0; y <= years; y++) {
+      yearly.push(tl.values[y * 12]);
+    }
+    return { label: tl.asset.label, color: tl.asset.color, data: yearly };
+  });
+
+  const yearlyTotal = [];
+  for (let y = 0; y <= years; y++) {
+    yearlyTotal.push(totalValues[y * 12]);
+  }
+
+  const finalNW = totalValues[totalMonths];
+  const passiveIncome = finalNW * (swr / 100) / 12;
+
+  return {
+    labels,
+    yearlyAssetData,
+    yearlyTotal,
+    fireNumber,
+    fireMonth,
+    finalNW,
+    passiveIncome,
+    currentAge,
+    retireAge,
+    years
+  };
+}
+
+// ── Format currency ──
+function fmt(n) {
+  if (n >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'K';
+  return '$' + Math.round(n).toLocaleString();
+}
+
+function fmtFull(n) {
+  return '$' + Math.round(n).toLocaleString();
+}
+
+// ── Update summary cards ──
+function updateSummary(proj) {
+  document.getElementById('fireNumber').textContent = fmt(proj.fireNumber);
+
+  if (assets.length === 0) {
+    document.getElementById('fireDate').textContent = '—';
+    document.getElementById('fireYearsAway').textContent = 'Add assets to simulate';
+    document.getElementById('projectedNW').textContent = '$0';
+    document.getElementById('passiveIncome').textContent = '$0';
+    return;
+  }
+
+  if (proj.fireMonth >= 0) {
+    const fireYear = proj.currentAge + Math.floor(proj.fireMonth / 12);
+    const fireMonthRemainder = proj.fireMonth % 12;
+    document.getElementById('fireDate').textContent = `Age ${fireYear}`;
+    const yrsAway = Math.floor(proj.fireMonth / 12);
+    const mosAway = proj.fireMonth % 12;
+    document.getElementById('fireYearsAway').textContent =
+      `${yrsAway}y ${mosAway}m from now`;
+  } else {
+    document.getElementById('fireDate').textContent = 'Not reached';
+    document.getElementById('fireYearsAway').textContent =
+      `Not within ${proj.years} years`;
+  }
+
+  document.getElementById('projectedNW').textContent = fmt(proj.finalNW);
+  document.getElementById('projectedLabel').textContent = `at age ${proj.retireAge}`;
+  document.getElementById('passiveIncome').textContent = fmt(proj.passiveIncome) + '/mo';
+}
+
+// ── Render chart ──
+function renderChart(proj) {
+  const ctx = document.getElementById('projectionChart').getContext('2d');
+
+  const datasets = [];
+
+  // Stacked area datasets for each asset
+  proj.yearlyAssetData.forEach((ad, i) => {
+    datasets.push({
+      label: ad.label,
+      data: ad.data,
+      backgroundColor: ad.color + '33',
+      borderColor: ad.color,
+      borderWidth: 2,
+      fill: i === 0 ? 'origin' : '-1',
+      pointRadius: 0,
+      pointHitRadius: 8,
+      tension: 0.3
+    });
+  });
+
+  // FIRE target line
+  const fireLine = proj.labels.map(() => proj.fireNumber);
+  datasets.push({
+    label: 'FIRE Target',
+    data: fireLine,
+    borderColor: '#f97316',
+    borderWidth: 2,
+    borderDash: [8, 4],
+    pointRadius: 0,
+    fill: false,
+    tension: 0
+  });
+
+  // Update legend
+  const legendEl = document.getElementById('chartLegend');
+  legendEl.innerHTML = '';
+  proj.yearlyAssetData.forEach(ad => {
+    legendEl.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:${ad.color}"></span>${ad.label}</span>`;
+  });
+  legendEl.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:var(--accent);"></span>FIRE Target</span>`;
+
+  if (chart) {
+    chart.data.labels = proj.labels;
+    chart.data.datasets = datasets;
+    chart.update('none');
+  } else {
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: { labels: proj.labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1a1d27',
+            borderColor: '#2e3240',
+            borderWidth: 1,
+            titleColor: '#e4e4e7',
+            bodyColor: '#9ca3af',
+            padding: 12,
+            callbacks: {
+              title: (items) => `Age ${items[0].label}`,
+              label: (item) => {
+                return `${item.dataset.label}: ${fmtFull(item.raw)}`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            title: { display: true, text: 'Age', color: '#9ca3af' },
+            ticks: { color: '#9ca3af' },
+            grid: { color: '#2e324033' }
+          },
+          y: {
+            title: { display: true, text: 'Value ($)', color: '#9ca3af' },
+            ticks: {
+              color: '#9ca3af',
+              callback: (v) => fmt(v)
+            },
+            grid: { color: '#2e324033' },
+            stacked: true
+          }
+        }
+      }
+    });
+  }
+}
+
+// ── Recalculate everything ──
+function recalculate() {
+  const proj = computeProjection();
+  updateSummary(proj);
+  renderChart(proj);
+}
+
+// ── Listen to personal info changes ──
+['currentAge', 'retireAge', 'monthlyExpenses', 'safeWithdrawal'].forEach(id => {
+  document.getElementById(id).addEventListener('input', recalculate);
+});
+
+// ── Initial render ──
+recalculate();
+</script>
+
 </body>
 </html>
