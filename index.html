@@ -671,7 +671,7 @@ function computeProjection() {
   const monthlyExpenses = parseFloat(document.getElementById('monthlyExpenses').value) || 0;
   const swr = parseFloat(document.getElementById('safeWithdrawal').value) || 4;
 
-  const years = Math.max(retireAge - currentAge, 1);
+  const years = Math.max(100 - currentAge, 1);
   const totalMonths = years * 12;
   const fireNumber = (monthlyExpenses * 12) / (swr / 100);
 
