@@ -385,6 +385,30 @@
       }
     }
 
+    /* Stop-at-fire checkbox row */
+    .asset-stop-row {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      margin-top: 0.35rem;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 0.6875rem;
+      user-select: none;
+    }
+
+    .asset-stop-row input[type="checkbox"] {
+      accent-color: var(--accent);
+      width: 10px;
+      height: 10px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .asset-stop-row.active {
+      color: var(--accent);
+    }
+
     /* Scrollbar */
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -605,7 +629,8 @@ function addAsset(type) {
     color: def.color,
     balance: def.defaults.balance,
     monthly: def.defaults.monthly,
-    returnRate: def.defaults.returnRate
+    returnRate: def.defaults.returnRate,
+    stopAtRetirement: false
   };
   assets.push(asset);
   renderAssets();
@@ -644,6 +669,10 @@ function renderAssets() {
           <input type="number" value="${a.returnRate}" data-id="${a.id}" data-field="returnRate" min="-20" max="50" step="0.5">
         </div>
       </div>
+      <label class="asset-stop-row${a.stopAtRetirement ? ' active' : ''}">
+        <input type="checkbox" ${a.stopAtRetirement ? 'checked' : ''} data-id="${a.id}" data-field="stopAtRetirement">
+        stop contrib. at fire
+      </label>
     </div>
   `).join('');
 
@@ -656,6 +685,9 @@ function renderAssets() {
       if (!asset) return;
       if (field === 'label') {
         asset.label = e.target.value;
+      } else if (field === 'stopAtRetirement') {
+        asset.stopAtRetirement = e.target.checked;
+        e.target.closest('.asset-stop-row').classList.toggle('active', asset.stopAtRetirement);
       } else {
         asset[field] = parseFloat(e.target.value) || 0;
       }
@@ -675,34 +707,26 @@ function computeProjection() {
   const totalMonths = years * 12;
   const fireNumber = (monthlyExpenses * 12) / (swr / 100);
 
-  // Per-asset month-by-month projection
-  const assetTimelines = assets.map(asset => {
-    const monthlyReturn = Math.pow(1 + asset.returnRate / 100, 1 / 12) - 1;
-    const values = [asset.balance];
-    let current = asset.balance;
-    for (let m = 1; m <= totalMonths; m++) {
-      current = current * (1 + monthlyReturn) + asset.monthly;
-      values.push(current);
-    }
-    return { asset, values };
-  });
-
-  // Total net worth per month
-  const totalValues = [];
-  for (let m = 0; m <= totalMonths; m++) {
-    let sum = 0;
-    assetTimelines.forEach(tl => { sum += tl.values[m]; });
-    totalValues.push(sum);
-  }
-
-  // Find FIRE month
+  // Unified month-by-month projection
+  // Contributions stop after fireMonth for assets with stopAtRetirement=true
+  const monthlyReturns = assets.map(a => Math.pow(1 + a.returnRate / 100, 1 / 12) - 1);
+  const assetCurrents = assets.map(a => a.balance);
+  const assetValues = assets.map(a => [a.balance]);
+  const totalValues = [assetCurrents.reduce((s, v) => s + v, 0)];
   let fireMonth = -1;
-  for (let m = 0; m <= totalMonths; m++) {
-    if (totalValues[m] >= fireNumber) {
-      fireMonth = m;
-      break;
-    }
+
+  for (let m = 1; m <= totalMonths; m++) {
+    assets.forEach((asset, i) => {
+      const monthly = (asset.stopAtRetirement && fireMonth >= 0) ? 0 : asset.monthly;
+      assetCurrents[i] = assetCurrents[i] * (1 + monthlyReturns[i]) + monthly;
+      assetValues[i].push(assetCurrents[i]);
+    });
+    const monthTotal = assetCurrents.reduce((s, v) => s + v, 0);
+    totalValues.push(monthTotal);
+    if (fireMonth < 0 && monthTotal >= fireNumber) fireMonth = m;
   }
+
+  const assetTimelines = assets.map((asset, i) => ({ asset, values: assetValues[i] }));
 
   // Sample yearly for chart labels
   const labels = [];
