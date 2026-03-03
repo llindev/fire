@@ -421,8 +421,8 @@
           <input type="number" id="monthlyExpenses" value="4000" min="0" step="100">
         </div>
         <div class="field">
-          <label for="safeWithdrawal">safe-withdrawal (%)</label>
-          <input type="number" id="safeWithdrawal" value="4" min="1" max="10" step="0.25">
+          <label for="inflation">inflation (%)</label>
+          <input type="number" id="inflation" value="3" min="0" max="15" step="0.25">
         </div>
       </div>
 
@@ -469,24 +469,24 @@
     <div class="main">
       <div class="summary-row">
         <div class="summary-card">
-          <div class="summary-label">fire_number</div>
-          <div class="summary-value text-accent" id="fireNumber">$0</div>
-          <div class="summary-sub">25x annual expenses</div>
-        </div>
-        <div class="summary-card">
-          <div class="summary-label">fire_date</div>
-          <div class="summary-value text-green" id="fireDate">—</div>
-          <div class="summary-sub" id="fireYearsAway">add assets to simulate</div>
-        </div>
-        <div class="summary-card">
           <div class="summary-label">net_worth</div>
-          <div class="summary-value text-blue" id="projectedNW">$0</div>
-          <div class="summary-sub" id="projectedLabel">at retirement</div>
+          <div class="summary-value text-accent" id="finalNW">$0</div>
+          <div class="summary-sub">at age 100</div>
         </div>
         <div class="summary-card">
-          <div class="summary-label">passive_income</div>
-          <div class="summary-value text-purple" id="passiveIncome">$0</div>
-          <div class="summary-sub">at retirement (swr)</div>
+          <div class="summary-label">total_spent</div>
+          <div class="summary-value text-green" id="totalSpent">—</div>
+          <div class="summary-sub">cumulative (infl. adj.)</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">net_remaining</div>
+          <div class="summary-value text-blue" id="netRemaining">$0</div>
+          <div class="summary-sub">after lifetime expenses</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">expense/mo</div>
+          <div class="summary-value text-purple" id="expenseAtRetire">$0</div>
+          <div class="summary-sub" id="expenseAtRetireLabel">at retire-age (infl. adj.)</div>
         </div>
       </div>
 
@@ -555,7 +555,7 @@ function saveState() {
     currentAge: document.getElementById('currentAge').value,
     retireAge: document.getElementById('retireAge').value,
     monthlyExpenses: document.getElementById('monthlyExpenses').value,
-    safeWithdrawal: document.getElementById('safeWithdrawal').value,
+    inflation: document.getElementById('inflation').value,
     assets,
     nextId
   };
@@ -570,7 +570,7 @@ function loadState() {
     if (state.currentAge != null) document.getElementById('currentAge').value = state.currentAge;
     if (state.retireAge != null) document.getElementById('retireAge').value = state.retireAge;
     if (state.monthlyExpenses != null) document.getElementById('monthlyExpenses').value = state.monthlyExpenses;
-    if (state.safeWithdrawal != null) document.getElementById('safeWithdrawal').value = state.safeWithdrawal;
+    if (state.inflation != null) document.getElementById('inflation').value = state.inflation;
     if (Array.isArray(state.assets)) assets = state.assets;
     if (state.nextId != null) nextId = state.nextId;
   } catch (e) {
@@ -669,11 +669,11 @@ function computeProjection() {
   const currentAge = parseInt(document.getElementById('currentAge').value) || 30;
   const retireAge = parseInt(document.getElementById('retireAge').value) || 50;
   const monthlyExpenses = parseFloat(document.getElementById('monthlyExpenses').value) || 0;
-  const swr = parseFloat(document.getElementById('safeWithdrawal').value) || 4;
+  const inflationRate = parseFloat(document.getElementById('inflation').value) || 3;
 
   const years = Math.max(100 - currentAge, 1);
   const totalMonths = years * 12;
-  const fireNumber = (monthlyExpenses * 12) / (swr / 100);
+  const inflationMonthly = Math.pow(1 + inflationRate / 100, 1 / 12) - 1;
 
   // Per-asset month-by-month projection
   const assetTimelines = assets.map(asset => {
@@ -695,13 +695,14 @@ function computeProjection() {
     totalValues.push(sum);
   }
 
-  // Find FIRE month
-  let fireMonth = -1;
-  for (let m = 0; m <= totalMonths; m++) {
-    if (totalValues[m] >= fireNumber) {
-      fireMonth = m;
-      break;
-    }
+  // Cumulative inflation-adjusted expenses per month
+  const cumulativeExpensesByMonth = [0];
+  let cumExp = 0;
+  let monthlyExp = monthlyExpenses;
+  for (let m = 1; m <= totalMonths; m++) {
+    monthlyExp *= (1 + inflationMonthly);
+    cumExp += monthlyExp;
+    cumulativeExpensesByMonth.push(cumExp);
   }
 
   // Sample yearly for chart labels
@@ -719,21 +720,25 @@ function computeProjection() {
   });
 
   const yearlyTotal = [];
+  const yearlyCumulativeExpenses = [];
   for (let y = 0; y <= years; y++) {
     yearlyTotal.push(totalValues[y * 12]);
+    yearlyCumulativeExpenses.push(cumulativeExpensesByMonth[y * 12]);
   }
 
   const finalNW = totalValues[totalMonths];
-  const passiveIncome = finalNW * (swr / 100) / 12;
+  const totalSpent = cumulativeExpensesByMonth[totalMonths];
+  const retireYears = Math.max(retireAge - currentAge, 0);
+  const expenseAtRetire = monthlyExpenses * Math.pow(1 + inflationRate / 100, retireYears);
 
   return {
     labels,
     yearlyAssetData,
     yearlyTotal,
-    fireNumber,
-    fireMonth,
+    yearlyCumulativeExpenses,
     finalNW,
-    passiveIncome,
+    totalSpent,
+    expenseAtRetire,
     currentAge,
     retireAge,
     years
@@ -753,32 +758,11 @@ function fmtFull(n) {
 
 // ── Update summary cards ──
 function updateSummary(proj) {
-  document.getElementById('fireNumber').textContent = fmt(proj.fireNumber);
-
-  if (assets.length === 0) {
-    document.getElementById('fireDate').textContent = '—';
-    document.getElementById('fireYearsAway').textContent = 'add assets to simulate';
-    document.getElementById('projectedNW').textContent = '$0';
-    document.getElementById('passiveIncome').textContent = '$0';
-    return;
-  }
-
-  if (proj.fireMonth >= 0) {
-    const fireYear = proj.currentAge + Math.floor(proj.fireMonth / 12);
-    document.getElementById('fireDate').textContent = `age ${fireYear}`;
-    const yrsAway = Math.floor(proj.fireMonth / 12);
-    const mosAway = proj.fireMonth % 12;
-    document.getElementById('fireYearsAway').textContent =
-      `${yrsAway}y ${mosAway}m from now`;
-  } else {
-    document.getElementById('fireDate').textContent = 'not reached';
-    document.getElementById('fireYearsAway').textContent =
-      `not within ${proj.years} years`;
-  }
-
-  document.getElementById('projectedNW').textContent = fmt(proj.finalNW);
-  document.getElementById('projectedLabel').textContent = `at age ${proj.retireAge}`;
-  document.getElementById('passiveIncome').textContent = fmt(proj.passiveIncome) + '/mo';
+  document.getElementById('finalNW').textContent = assets.length === 0 ? '$0' : fmt(proj.finalNW);
+  document.getElementById('totalSpent').textContent = fmt(proj.totalSpent);
+  document.getElementById('netRemaining').textContent = assets.length === 0 ? '$0' : fmt(proj.finalNW - proj.totalSpent);
+  document.getElementById('expenseAtRetire').textContent = fmt(proj.expenseAtRetire) + '/mo';
+  document.getElementById('expenseAtRetireLabel').textContent = `at age ${proj.retireAge} (infl. adj.)`;
 }
 
 // ── Render chart ──
@@ -803,17 +787,17 @@ function renderChart(proj) {
     });
   });
 
-  // FIRE target line
-  const fireLine = proj.labels.map(() => proj.fireNumber);
+  // Cumulative inflation-adjusted expenses line
   datasets.push({
-    label: 'fire target',
-    data: fireLine,
-    borderColor: '#4ade80',
+    label: 'cumul. expenses',
+    data: proj.yearlyCumulativeExpenses,
+    borderColor: '#f87171',
     borderWidth: 1.5,
     borderDash: [6, 4],
     pointRadius: 0,
     fill: false,
-    tension: 0
+    stack: undefined,
+    tension: 0.3
   });
 
   // Update legend
@@ -822,7 +806,7 @@ function renderChart(proj) {
   proj.yearlyAssetData.forEach(ad => {
     legendEl.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:${ad.color}"></span>${ad.label}</span>`;
   });
-  legendEl.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:var(--accent);"></span>fire target</span>`;
+  legendEl.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:#f87171;"></span>cumul. expenses</span>`;
 
   if (chart) {
     chart.data.labels = proj.labels;
@@ -892,7 +876,7 @@ function recalculate() {
 }
 
 // ── Listen to personal info changes ──
-['currentAge', 'retireAge', 'monthlyExpenses', 'safeWithdrawal'].forEach(id => {
+['currentAge', 'retireAge', 'monthlyExpenses', 'inflation'].forEach(id => {
   document.getElementById(id).addEventListener('input', recalculate);
 });
 
