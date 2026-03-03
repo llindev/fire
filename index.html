@@ -547,6 +547,37 @@ let assets = [];
 let nextId = 1;
 let chart = null;
 
+// ── Persistence ──
+const STORAGE_KEY = 'fire-calc-state';
+
+function saveState() {
+  const state = {
+    currentAge: document.getElementById('currentAge').value,
+    retireAge: document.getElementById('retireAge').value,
+    monthlyExpenses: document.getElementById('monthlyExpenses').value,
+    safeWithdrawal: document.getElementById('safeWithdrawal').value,
+    assets,
+    nextId
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function loadState() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return;
+  try {
+    const state = JSON.parse(raw);
+    if (state.currentAge != null) document.getElementById('currentAge').value = state.currentAge;
+    if (state.retireAge != null) document.getElementById('retireAge').value = state.retireAge;
+    if (state.monthlyExpenses != null) document.getElementById('monthlyExpenses').value = state.monthlyExpenses;
+    if (state.safeWithdrawal != null) document.getElementById('safeWithdrawal').value = state.safeWithdrawal;
+    if (Array.isArray(state.assets)) assets = state.assets;
+    if (state.nextId != null) nextId = state.nextId;
+  } catch (e) {
+    // ignore corrupted state
+  }
+}
+
 // ── DOM refs ──
 const assetList = document.getElementById('assetList');
 const btnAdd = document.getElementById('btnAddAsset');
@@ -853,6 +884,7 @@ function renderChart(proj) {
 
 // ── Recalculate everything ──
 function recalculate() {
+  saveState();
   const proj = computeProjection();
   updateSummary(proj);
   renderChart(proj);
@@ -863,7 +895,9 @@ function recalculate() {
   document.getElementById(id).addEventListener('input', recalculate);
 });
 
-// ── Initial render ──
+// ── Load saved state then render ──
+loadState();
+renderAssets();
 recalculate();
 </script>
 
