@@ -479,9 +479,9 @@
           <div class="summary-sub">cumulative (infl. adj.)</div>
         </div>
         <div class="summary-card">
-          <div class="summary-label">net_remaining</div>
+          <div class="summary-label">net_worth</div>
           <div class="summary-value text-blue" id="netRemaining">$0</div>
-          <div class="summary-sub">after lifetime expenses</div>
+          <div class="summary-sub" id="netRemainingLabel">at retire age</div>
         </div>
         <div class="summary-card">
           <div class="summary-label">expense/mo</div>
@@ -675,34 +675,44 @@ function computeProjection() {
   const totalMonths = years * 12;
   const inflationMonthly = Math.pow(1 + inflationRate / 100, 1 / 12) - 1;
 
-  // Per-asset month-by-month projection
-  const assetTimelines = assets.map(asset => {
-    const monthlyReturn = Math.pow(1 + asset.returnRate / 100, 1 / 12) - 1;
-    const values = [asset.balance];
-    let current = asset.balance;
-    for (let m = 1; m <= totalMonths; m++) {
-      current = current * (1 + monthlyReturn) + asset.monthly;
-      values.push(current);
-    }
-    return { asset, values };
-  });
+  // Per-asset month-by-month projection WITH monthly expense deductions.
+  // Expenses are deducted proportionally from all assets each month so the
+  // compound growth is correctly reduced by spending.
+  const assetMonthlyReturns = assets.map(a => Math.pow(1 + a.returnRate / 100, 1 / 12) - 1);
+  const assetBalances = assets.map(a => a.balance);
 
-  // Total net worth per month
-  const totalValues = [];
-  for (let m = 0; m <= totalMonths; m++) {
-    let sum = 0;
-    assetTimelines.forEach(tl => { sum += tl.values[m]; });
-    totalValues.push(sum);
-  }
+  const assetTimelines = assets.map((asset, i) => ({ asset, values: [assetBalances[i]] }));
+  const totalValues = [assetBalances.reduce((s, b) => s + b, 0)];
 
-  // Cumulative inflation-adjusted expenses per month
+  // Cumulative inflation-adjusted expenses (for summary card)
   const cumulativeExpensesByMonth = [0];
   let cumExp = 0;
   let monthlyExp = monthlyExpenses;
+
   for (let m = 1; m <= totalMonths; m++) {
+    // Inflate this month's expense
     monthlyExp *= (1 + inflationMonthly);
     cumExp += monthlyExp;
     cumulativeExpensesByMonth.push(cumExp);
+
+    // Apply returns + contributions to each asset
+    for (let i = 0; i < assets.length; i++) {
+      assetBalances[i] = assetBalances[i] * (1 + assetMonthlyReturns[i]) + assets[i].monthly;
+    }
+
+    // Deduct this month's expenses proportionally across all assets
+    const totalAfterGrowth = assetBalances.reduce((s, b) => s + b, 0);
+    if (totalAfterGrowth > 0 && monthlyExp > 0) {
+      const deductFrac = Math.min(monthlyExp / totalAfterGrowth, 1);
+      for (let i = 0; i < assets.length; i++) {
+        assetBalances[i] = Math.max(0, assetBalances[i] * (1 - deductFrac));
+      }
+    }
+
+    for (let i = 0; i < assets.length; i++) {
+      assetTimelines[i].values.push(assetBalances[i]);
+    }
+    totalValues.push(assetBalances.reduce((s, b) => s + b, 0));
   }
 
   // Sample yearly for chart labels
@@ -730,6 +740,7 @@ function computeProjection() {
   const totalSpent = cumulativeExpensesByMonth[totalMonths];
   const retireYears = Math.max(retireAge - currentAge, 0);
   const expenseAtRetire = monthlyExpenses * Math.pow(1 + inflationRate / 100, retireYears);
+  const nwAtRetire = totalValues[retireYears * 12];
 
   return {
     labels,
@@ -739,6 +750,7 @@ function computeProjection() {
     finalNW,
     totalSpent,
     expenseAtRetire,
+    nwAtRetire,
     currentAge,
     retireAge,
     years
@@ -760,9 +772,10 @@ function fmtFull(n) {
 function updateSummary(proj) {
   document.getElementById('finalNW').textContent = assets.length === 0 ? '$0' : fmt(proj.finalNW);
   document.getElementById('totalSpent').textContent = fmt(proj.totalSpent);
-  document.getElementById('netRemaining').textContent = assets.length === 0 ? '$0' : fmt(proj.finalNW - proj.totalSpent);
+  document.getElementById('netRemaining').textContent = assets.length === 0 ? '$0' : fmt(proj.nwAtRetire);
   document.getElementById('expenseAtRetire').textContent = fmt(proj.expenseAtRetire) + '/mo';
   document.getElementById('expenseAtRetireLabel').textContent = `at age ${proj.retireAge} (infl. adj.)`;
+  document.getElementById('netRemainingLabel').textContent = `at retire age ${proj.retireAge}`;
 }
 
 // ── Render chart ──
@@ -787,26 +800,12 @@ function renderChart(proj) {
     });
   });
 
-  // Cumulative inflation-adjusted expenses line
-  datasets.push({
-    label: 'cumul. expenses',
-    data: proj.yearlyCumulativeExpenses,
-    borderColor: '#f87171',
-    borderWidth: 1.5,
-    borderDash: [6, 4],
-    pointRadius: 0,
-    fill: false,
-    stack: undefined,
-    tension: 0.3
-  });
-
   // Update legend
   const legendEl = document.getElementById('chartLegend');
   legendEl.innerHTML = '';
   proj.yearlyAssetData.forEach(ad => {
     legendEl.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:${ad.color}"></span>${ad.label}</span>`;
   });
-  legendEl.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:#f87171;"></span>cumul. expenses</span>`;
 
   if (chart) {
     chart.data.labels = proj.labels;
