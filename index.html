@@ -547,6 +547,48 @@ const ASSET_TYPES = {
 let assets = [];
 let nextId = 1;
 let chart = null;
+let chartMarkers = [];
+
+// ── Vertical markers plugin ──
+const verticalMarkersPlugin = {
+  id: 'verticalMarkers',
+  afterDraw(ch) {
+    if (!chartMarkers.length) return;
+    const { ctx, chartArea, scales } = ch;
+    const xScale = scales.x;
+    ctx.save();
+    ctx.font = "9px 'Courier New', monospace";
+    chartMarkers.forEach(marker => {
+      const idx = ch.data.labels.indexOf(marker.age);
+      if (idx < 0) return;
+      const x = xScale.getPixelForValue(idx);
+      // Vertical line
+      ctx.beginPath();
+      ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = marker.color + 'aa';
+      ctx.lineWidth = 1;
+      ctx.moveTo(x, chartArea.top);
+      ctx.lineTo(x, chartArea.bottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Label pill
+      const tw = ctx.measureText(marker.label).width;
+      const pad = 3, bh = 13;
+      const bx = Math.min(Math.max(x - tw / 2 - pad, chartArea.left), chartArea.right - tw - pad * 2);
+      const by = chartArea.top + 5;
+      ctx.fillStyle = '#111111';
+      ctx.fillRect(bx, by, tw + pad * 2, bh);
+      ctx.strokeStyle = marker.color + '99';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(bx, by, tw + pad * 2, bh);
+      ctx.fillStyle = marker.color;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(marker.label, bx + pad, by + bh / 2);
+    });
+    ctx.restore();
+  }
+};
 
 // ── Persistence ──
 const STORAGE_KEY = 'fire-calc-state';
@@ -822,6 +864,18 @@ function updateSummary(proj) {
 function renderChart(proj) {
   const ctx = document.getElementById('projectionChart').getContext('2d');
 
+  // Update markers (vertical lines) for key events
+  chartMarkers = [
+    { age: proj.retireAge, label: `retire`, color: '#c084fc' }
+  ];
+  if (proj.assetsDepletedAge != null) {
+    chartMarkers.push({
+      age: Math.floor(proj.assetsDepletedAge),
+      label: 'assets=0',
+      color: '#f87171'
+    });
+  }
+
   const datasets = [];
 
   // Stacked area datasets for each asset
@@ -874,6 +928,7 @@ function renderChart(proj) {
     chart = new Chart(ctx, {
       type: 'line',
       data: { labels: proj.labels, datasets },
+      plugins: [verticalMarkersPlugin],
       options: {
         responsive: true,
         maintainAspectRatio: false,
