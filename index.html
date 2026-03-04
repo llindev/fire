@@ -291,6 +291,7 @@
     .text-accent { color: var(--accent); }
     .text-blue   { color: var(--blue); }
     .text-purple { color: var(--purple); }
+    .text-red    { color: var(--red); }
 
     /* Chart container */
     .chart-container {
@@ -471,7 +472,7 @@
         <div class="summary-card">
           <div class="summary-label">net_worth</div>
           <div class="summary-value text-accent" id="finalNW">$0</div>
-          <div class="summary-sub">at age 100</div>
+          <div class="summary-sub" id="finalNWSub">at age 100</div>
         </div>
         <div class="summary-card">
           <div class="summary-label">total_spent</div>
@@ -689,6 +690,11 @@ function computeProjection() {
   let cumExp = 0;
   let monthlyExp = monthlyExpenses;
 
+  // Debt tracking: accumulates when assets can't cover monthly expenses
+  const debtTimeline = [0];
+  let debt = 0;
+  let assetsDepletedAge = null;
+
   for (let m = 1; m <= totalMonths; m++) {
     // Inflate this month's expense
     monthlyExp *= (1 + inflationMonthly);
@@ -708,6 +714,19 @@ function computeProjection() {
         assetBalances[i] = Math.max(0, assetBalances[i] * (1 - deductFrac));
       }
     }
+
+    // Track uncovered expenses as debt
+    if (monthlyExp > 0) {
+      const covered = Math.min(monthlyExp, Math.max(0, totalAfterGrowth));
+      const uncovered = monthlyExp - covered;
+      if (uncovered > 0) {
+        debt += uncovered;
+        if (assetsDepletedAge === null) {
+          assetsDepletedAge = currentAge + m / 12;
+        }
+      }
+    }
+    debtTimeline.push(debt);
 
     for (let i = 0; i < assets.length; i++) {
       assetTimelines[i].values.push(assetBalances[i]);
@@ -731,12 +750,15 @@ function computeProjection() {
 
   const yearlyTotal = [];
   const yearlyCumulativeExpenses = [];
+  const yearlyDebt = [];
   for (let y = 0; y <= years; y++) {
     yearlyTotal.push(totalValues[y * 12]);
     yearlyCumulativeExpenses.push(cumulativeExpensesByMonth[y * 12]);
+    yearlyDebt.push(-debtTimeline[y * 12]); // negative for below-zero chart display
   }
 
   const finalNW = totalValues[totalMonths];
+  const finalDebt = debt;
   const totalSpent = cumulativeExpensesByMonth[totalMonths];
   const retireYears = Math.max(retireAge - currentAge, 0);
   const expenseAtRetire = monthlyExpenses * Math.pow(1 + inflationRate / 100, retireYears);
@@ -747,7 +769,10 @@ function computeProjection() {
     yearlyAssetData,
     yearlyTotal,
     yearlyCumulativeExpenses,
+    yearlyDebt,
     finalNW,
+    finalDebt,
+    assetsDepletedAge,
     totalSpent,
     expenseAtRetire,
     nwAtRetire,
@@ -770,7 +795,22 @@ function fmtFull(n) {
 
 // ── Update summary cards ──
 function updateSummary(proj) {
-  document.getElementById('finalNW').textContent = assets.length === 0 ? '$0' : fmt(proj.finalNW);
+  const finalNWEl = document.getElementById('finalNW');
+  const finalNWSubEl = document.getElementById('finalNWSub');
+
+  if (proj.finalDebt > 0) {
+    finalNWEl.textContent = '-' + fmt(proj.finalDebt);
+    finalNWEl.className = 'summary-value text-red';
+    const depletedAge = proj.assetsDepletedAge != null
+      ? ` (out at ${Math.floor(proj.assetsDepletedAge)})`
+      : '';
+    finalNWSubEl.textContent = `debt by age 100${depletedAge}`;
+  } else {
+    finalNWEl.textContent = assets.length === 0 ? '$0' : fmt(proj.finalNW);
+    finalNWEl.className = 'summary-value text-accent';
+    finalNWSubEl.textContent = 'at age 100';
+  }
+
   document.getElementById('totalSpent').textContent = fmt(proj.totalSpent);
   document.getElementById('netRemaining').textContent = assets.length === 0 ? '$0' : fmt(proj.nwAtRetire);
   document.getElementById('expenseAtRetire').textContent = fmt(proj.expenseAtRetire) + '/mo';
@@ -800,12 +840,31 @@ function renderChart(proj) {
     });
   });
 
+  // Debt dataset (below zero, red dashed)
+  if (proj.finalDebt > 0) {
+    datasets.push({
+      label: 'debt-projection',
+      data: proj.yearlyDebt,
+      backgroundColor: '#f8717118',
+      borderColor: '#f87171',
+      borderWidth: 1.5,
+      borderDash: [5, 3],
+      fill: 'origin',
+      pointRadius: 0,
+      pointHitRadius: 8,
+      tension: 0.3
+    });
+  }
+
   // Update legend
   const legendEl = document.getElementById('chartLegend');
   legendEl.innerHTML = '';
   proj.yearlyAssetData.forEach(ad => {
     legendEl.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:${ad.color}"></span>${ad.label}</span>`;
   });
+  if (proj.finalDebt > 0) {
+    legendEl.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:#f87171"></span>debt-projection</span>`;
+  }
 
   if (chart) {
     chart.data.labels = proj.labels;
@@ -836,6 +895,10 @@ function renderChart(proj) {
             callbacks: {
               title: (items) => `age ${items[0].label}`,
               label: (item) => {
+                if (item.dataset.label === 'debt-projection') {
+                  const v = -item.raw;
+                  return v > 0 ? `  debt-projection: ${fmtFull(v)}` : null;
+                }
                 return `  ${item.dataset.label}: ${fmtFull(item.raw)}`;
               }
             }
