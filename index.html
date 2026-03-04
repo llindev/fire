@@ -28,6 +28,7 @@
       --cyan: #22d3ee;
       --pink: #f472b6;
       --yellow: #facc15;
+      --orange: #fb923c;
     }
 
     body {
@@ -418,13 +419,16 @@
           </div>
         </div>
         <div class="field">
-          <label for="monthlyExpenses">monthly-expenses ($)</label>
-          <input type="number" id="monthlyExpenses" value="4000" min="0" step="100">
-        </div>
-        <div class="field">
           <label for="inflation">inflation (%)</label>
           <input type="number" id="inflation" value="3" min="0" max="15" step="0.25">
         </div>
+      </div>
+
+      <!-- Expenses -->
+      <div>
+        <div class="section-title">expenses</div>
+        <div id="expenseList"></div>
+        <button class="btn-add" id="btnAddExpense">+ add-expense</button>
       </div>
 
       <!-- Assets -->
@@ -546,6 +550,8 @@ const ASSET_TYPES = {
 // ── State ──
 let assets = [];
 let nextId = 1;
+let expenses = [];
+let nextExpenseId = 1;
 let chart = null;
 let chartMarkers = [];
 
@@ -597,10 +603,11 @@ function saveState() {
   const state = {
     currentAge: document.getElementById('currentAge').value,
     retireAge: document.getElementById('retireAge').value,
-    monthlyExpenses: document.getElementById('monthlyExpenses').value,
     inflation: document.getElementById('inflation').value,
     assets,
-    nextId
+    nextId,
+    expenses,
+    nextExpenseId
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
@@ -612,10 +619,23 @@ function loadState() {
     const state = JSON.parse(raw);
     if (state.currentAge != null) document.getElementById('currentAge').value = state.currentAge;
     if (state.retireAge != null) document.getElementById('retireAge').value = state.retireAge;
-    if (state.monthlyExpenses != null) document.getElementById('monthlyExpenses').value = state.monthlyExpenses;
     if (state.inflation != null) document.getElementById('inflation').value = state.inflation;
     if (Array.isArray(state.assets)) assets = state.assets;
     if (state.nextId != null) nextId = state.nextId;
+    if (Array.isArray(state.expenses)) {
+      expenses = state.expenses;
+      if (state.nextExpenseId != null) nextExpenseId = state.nextExpenseId;
+    } else if (state.monthlyExpenses != null) {
+      // Migrate from old single-expense format
+      const currentAge = parseInt(state.currentAge) || 30;
+      expenses = [{
+        id: nextExpenseId++,
+        label: 'living-expenses',
+        amount: parseFloat(state.monthlyExpenses) || 4000,
+        startAge: currentAge,
+        endAge: 100
+      }];
+    }
   } catch (e) {
     // ignore corrupted state
   }
@@ -625,6 +645,73 @@ function loadState() {
 const assetList = document.getElementById('assetList');
 const btnAdd = document.getElementById('btnAddAsset');
 const typeMenu = document.getElementById('assetTypeMenu');
+const expenseList = document.getElementById('expenseList');
+
+// ── Expense management ──
+function addExpense() {
+  const currentAge = parseInt(document.getElementById('currentAge').value) || 30;
+  expenses.push({
+    id: nextExpenseId++,
+    label: 'expense',
+    amount: 2000,
+    startAge: currentAge,
+    endAge: 100
+  });
+  renderExpenses();
+  recalculate();
+}
+
+function removeExpense(id) {
+  expenses = expenses.filter(e => e.id !== id);
+  renderExpenses();
+  recalculate();
+}
+
+function renderExpenses() {
+  expenseList.innerHTML = expenses.map(e => `
+    <div class="asset-card" style="margin-bottom: 0.4rem; border-left-color: var(--orange);">
+      <div class="asset-card-header">
+        <div class="asset-card-header-left">
+          <span class="asset-dot" style="background: var(--orange)"></span>
+          <input type="text" value="${e.label}" data-eid="${e.id}" data-field="label"
+            style="background:transparent;border:none;color:var(--text);font-size:0.75rem;font-weight:bold;width:130px;outline:none;font-family:inherit;">
+        </div>
+        <button class="btn-remove" onclick="removeExpense(${e.id})">[x]</button>
+      </div>
+      <div class="row-3">
+        <div class="field">
+          <label>amount ($/mo)</label>
+          <input type="number" value="${e.amount}" data-eid="${e.id}" data-field="amount" min="0" step="100">
+        </div>
+        <div class="field">
+          <label>start-age</label>
+          <input type="number" value="${e.startAge}" data-eid="${e.id}" data-field="startAge" min="0" max="120">
+        </div>
+        <div class="field">
+          <label>end-age</label>
+          <input type="number" value="${e.endAge}" data-eid="${e.id}" data-field="endAge" min="0" max="120">
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  expenseList.querySelectorAll('input[data-eid]').forEach(input => {
+    input.addEventListener('input', (e) => {
+      const id = parseInt(e.target.dataset.eid);
+      const field = e.target.dataset.field;
+      const exp = expenses.find(x => x.id === id);
+      if (!exp) return;
+      if (field === 'label') {
+        exp.label = e.target.value;
+      } else {
+        exp[field] = parseFloat(e.target.value) || 0;
+      }
+      recalculate();
+    });
+  });
+}
+
+document.getElementById('btnAddExpense').addEventListener('click', addExpense);
 
 // ── Toggle asset type menu ──
 btnAdd.addEventListener('click', () => {
@@ -711,12 +798,10 @@ function renderAssets() {
 function computeProjection() {
   const currentAge = parseInt(document.getElementById('currentAge').value) || 30;
   const retireAge = parseInt(document.getElementById('retireAge').value) || 50;
-  const monthlyExpenses = parseFloat(document.getElementById('monthlyExpenses').value) || 0;
   const inflationRate = parseFloat(document.getElementById('inflation').value) || 3;
 
   const years = Math.max(100 - currentAge, 1);
   const totalMonths = years * 12;
-  const inflationMonthly = Math.pow(1 + inflationRate / 100, 1 / 12) - 1;
 
   // Per-asset month-by-month projection WITH monthly expense deductions.
   // Expenses are deducted proportionally from all assets each month so the
@@ -730,7 +815,6 @@ function computeProjection() {
   // Cumulative inflation-adjusted expenses (for summary card)
   const cumulativeExpensesByMonth = [0];
   let cumExp = 0;
-  let monthlyExp = monthlyExpenses;
 
   // Debt tracking: accumulates when assets can't cover monthly expenses
   const debtTimeline = [0];
@@ -738,8 +822,13 @@ function computeProjection() {
   let assetsDepletedAge = null;
 
   for (let m = 1; m <= totalMonths; m++) {
-    // Inflate this month's expense
-    monthlyExp *= (1 + inflationMonthly);
+    // Sum active expense items for this month, inflation-adjusted from currentAge
+    const ageNow = currentAge + m / 12;
+    const inflFactor = Math.pow(1 + inflationRate / 100, m / 12);
+    const monthlyExp = expenses.reduce((sum, e) => {
+      if (ageNow >= e.startAge && ageNow <= e.endAge) return sum + e.amount * inflFactor;
+      return sum;
+    }, 0);
     cumExp += monthlyExp;
     cumulativeExpensesByMonth.push(cumExp);
 
@@ -803,7 +892,12 @@ function computeProjection() {
   const finalDebt = debt;
   const totalSpent = cumulativeExpensesByMonth[totalMonths];
   const retireYears = Math.max(retireAge - currentAge, 0);
-  const expenseAtRetire = monthlyExpenses * Math.pow(1 + inflationRate / 100, retireYears);
+  // Expense at retire: sum of items active at retireAge, inflation-adjusted
+  const retireInflFactor = Math.pow(1 + inflationRate / 100, retireYears);
+  const expenseAtRetire = expenses.reduce((sum, e) => {
+    if (retireAge >= e.startAge && retireAge <= e.endAge) return sum + e.amount * retireInflFactor;
+    return sum;
+  }, 0);
   const nwAtRetire = totalValues[retireYears * 12];
 
   return {
@@ -993,12 +1087,24 @@ function recalculate() {
 }
 
 // ── Listen to personal info changes ──
-['currentAge', 'retireAge', 'monthlyExpenses', 'inflation'].forEach(id => {
+['currentAge', 'retireAge', 'inflation'].forEach(id => {
   document.getElementById(id).addEventListener('input', recalculate);
 });
 
 // ── Load saved state then render ──
 loadState();
+// Seed default expense if none saved
+if (expenses.length === 0) {
+  const currentAge = parseInt(document.getElementById('currentAge').value) || 30;
+  expenses.push({
+    id: nextExpenseId++,
+    label: 'living-expenses',
+    amount: 4000,
+    startAge: currentAge,
+    endAge: 100
+  });
+}
+renderExpenses();
 renderAssets();
 recalculate();
 </script>
