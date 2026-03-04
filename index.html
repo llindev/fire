@@ -461,6 +461,10 @@
             <span class="dot" style="background: var(--text-muted)"></span>
             custom-asset
           </button>
+          <button class="asset-type-option" data-type="withdraw">
+            <span class="dot" style="background: var(--red)"></span>
+            withdraw
+          </button>
         </div>
       </div>
     </div>
@@ -479,9 +483,9 @@
           <div class="summary-sub">cumulative (infl. adj.)</div>
         </div>
         <div class="summary-card">
-          <div class="summary-label">net_remaining</div>
-          <div class="summary-value text-blue" id="netRemaining">$0</div>
-          <div class="summary-sub">after lifetime expenses</div>
+          <div class="summary-label">starting_worth</div>
+          <div class="summary-value text-blue" id="startingNW">$0</div>
+          <div class="summary-sub">current portfolio value</div>
         </div>
         <div class="summary-card">
           <div class="summary-label">expense/mo</div>
@@ -539,6 +543,11 @@ const ASSET_TYPES = {
     label: 'custom-asset',
     color: '#505050',
     defaults: { balance: 0, monthly: 0, returnRate: 7 }
+  },
+  withdraw: {
+    label: 'withdraw',
+    color: '#f87171',
+    defaults: { balance: 100000, monthly: 2000, returnRate: 7 }
   }
 };
 
@@ -636,7 +645,7 @@ function renderAssets() {
           <input type="number" value="${a.balance}" data-id="${a.id}" data-field="balance" min="0" step="1000">
         </div>
         <div class="field">
-          <label>monthly ($)</label>
+          <label>${a.type === 'withdraw' ? 'withdraw/mo ($)' : 'monthly ($)'}</label>
           <input type="number" value="${a.monthly}" data-id="${a.id}" data-field="monthly" min="0" step="100">
         </div>
         <div class="field">
@@ -675,43 +684,56 @@ function computeProjection() {
   const totalMonths = years * 12;
   const inflationMonthly = Math.pow(1 + inflationRate / 100, 1 / 12) - 1;
 
-  // Per-asset month-by-month projection
-  const assetTimelines = assets.map(asset => {
-    const monthlyReturn = Math.pow(1 + asset.returnRate / 100, 1 / 12) - 1;
-    const values = [asset.balance];
-    let current = asset.balance;
-    for (let m = 1; m <= totalMonths; m++) {
-      current = current * (1 + monthlyReturn) + asset.monthly;
-      values.push(current);
-    }
-    return { asset, values };
-  });
+  const startingNW = assets.reduce((s, a) => s + a.balance, 0);
 
-  // Total net worth per month
-  const totalValues = [];
-  for (let m = 0; m <= totalMonths; m++) {
-    let sum = 0;
-    assetTimelines.forEach(tl => { sum += tl.values[m]; });
-    totalValues.push(sum);
-  }
+  // Pre-compute per-asset monthly return rates
+  const timelines = assets.map(asset => ({
+    asset,
+    monthlyReturn: Math.pow(1 + asset.returnRate / 100, 1 / 12) - 1,
+    balance: asset.balance,
+    values: [asset.balance]
+  }));
 
-  // Cumulative inflation-adjusted expenses per month
-  const cumulativeExpensesByMonth = [0];
   let cumExp = 0;
   let monthlyExp = monthlyExpenses;
+  const cumulativeExpensesByMonth = [0];
+
   for (let m = 1; m <= totalMonths; m++) {
+    // 1. Inflate this month's expense
     monthlyExp *= (1 + inflationMonthly);
-    cumExp += monthlyExp;
+
+    // 2. Grow each asset; withdraw-type assets subtract their monthly amount
+    for (const tl of timelines) {
+      if (tl.asset.type === 'withdraw') {
+        tl.balance = Math.max(0, tl.balance * (1 + tl.monthlyReturn) - tl.asset.monthly);
+      } else {
+        tl.balance = tl.balance * (1 + tl.monthlyReturn) + tl.asset.monthly;
+      }
+    }
+
+    // 3. Deduct expenses from assets in listed order (cascade when depleted)
+    let remaining = monthlyExp;
+    for (const tl of timelines) {
+      if (remaining <= 0) break;
+      const drawn = Math.min(Math.max(tl.balance, 0), remaining);
+      tl.balance -= drawn;
+      remaining -= drawn;
+    }
+    cumExp += (monthlyExp - Math.max(remaining, 0));
     cumulativeExpensesByMonth.push(cumExp);
+
+    for (const tl of timelines) {
+      tl.values.push(tl.balance);
+    }
   }
 
-  // Sample yearly for chart labels
+  // Sample yearly
   const labels = [];
   for (let y = 0; y <= years; y++) {
     labels.push(currentAge + y);
   }
 
-  const yearlyAssetData = assetTimelines.map(tl => {
+  const yearlyAssetData = timelines.map(tl => {
     const yearly = [];
     for (let y = 0; y <= years; y++) {
       yearly.push(tl.values[y * 12]);
@@ -719,14 +741,12 @@ function computeProjection() {
     return { label: tl.asset.label, color: tl.asset.color, data: yearly };
   });
 
-  const yearlyTotal = [];
   const yearlyCumulativeExpenses = [];
   for (let y = 0; y <= years; y++) {
-    yearlyTotal.push(totalValues[y * 12]);
     yearlyCumulativeExpenses.push(cumulativeExpensesByMonth[y * 12]);
   }
 
-  const finalNW = totalValues[totalMonths];
+  const finalNW = timelines.reduce((s, tl) => s + tl.values[totalMonths], 0);
   const totalSpent = cumulativeExpensesByMonth[totalMonths];
   const retireYears = Math.max(retireAge - currentAge, 0);
   const expenseAtRetire = monthlyExpenses * Math.pow(1 + inflationRate / 100, retireYears);
@@ -734,9 +754,9 @@ function computeProjection() {
   return {
     labels,
     yearlyAssetData,
-    yearlyTotal,
     yearlyCumulativeExpenses,
     finalNW,
+    startingNW,
     totalSpent,
     expenseAtRetire,
     currentAge,
@@ -760,7 +780,7 @@ function fmtFull(n) {
 function updateSummary(proj) {
   document.getElementById('finalNW').textContent = assets.length === 0 ? '$0' : fmt(proj.finalNW);
   document.getElementById('totalSpent').textContent = fmt(proj.totalSpent);
-  document.getElementById('netRemaining').textContent = assets.length === 0 ? '$0' : fmt(proj.finalNW - proj.totalSpent);
+  document.getElementById('startingNW').textContent = fmt(proj.startingNW);
   document.getElementById('expenseAtRetire').textContent = fmt(proj.expenseAtRetire) + '/mo';
   document.getElementById('expenseAtRetireLabel').textContent = `at age ${proj.retireAge} (infl. adj.)`;
 }
