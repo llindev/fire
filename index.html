@@ -890,6 +890,15 @@ function computeProjection() {
     yearlyDebt.push(-debtTimeline[y * 12]); // negative for below-zero chart display
   }
 
+  // Find first year where portfolio peaks (expenses exceed gross asset growth)
+  let portfolioPeakAge = null;
+  for (let y = 1; y <= years; y++) {
+    if (yearlyTotal[y] < yearlyTotal[y - 1]) {
+      portfolioPeakAge = currentAge + y;
+      break;
+    }
+  }
+
   const finalNW = totalValues[totalMonths];
   const finalDebt = debt;
   const totalSpent = cumulativeExpensesByMonth[totalMonths];
@@ -911,6 +920,7 @@ function computeProjection() {
     yearlyDebt,
     finalNW,
     finalDebt,
+    portfolioPeakAge,
     assetsDepletedAge,
     totalSpent,
     expenseAtRetire,
@@ -965,6 +975,13 @@ function renderChart(proj) {
   chartMarkers = [
     { age: proj.retireAge, label: `retire`, color: '#c084fc' }
   ];
+  if (proj.portfolioPeakAge != null) {
+    chartMarkers.push({
+      age: proj.portfolioPeakAge,
+      label: 'exp>growth',
+      color: '#fb923c'
+    });
+  }
   if (proj.assetsDepletedAge != null) {
     chartMarkers.push({
       age: Math.floor(proj.assetsDepletedAge),
