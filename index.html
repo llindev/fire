@@ -728,6 +728,8 @@ document.querySelectorAll('.asset-type-option').forEach(btn => {
 // ── Add asset ──
 function addAsset(type) {
   const def = ASSET_TYPES[type];
+  const currentAge = parseInt(document.getElementById('currentAge').value) || 30;
+  const retireAge = parseInt(document.getElementById('retireAge').value) || 50;
   const asset = {
     id: nextId++,
     type,
@@ -735,6 +737,7 @@ function addAsset(type) {
     color: def.color,
     balance: def.defaults.balance,
     monthly: def.defaults.monthly,
+    contributionEndAge: retireAge,
     returnRate: def.defaults.returnRate
   };
   assets.push(asset);
@@ -772,6 +775,12 @@ function renderAssets() {
         <div class="field">
           <label>return (%/yr)</label>
           <input type="number" value="${a.returnRate}" data-id="${a.id}" data-field="returnRate" min="-20" max="50" step="0.5">
+        </div>
+      </div>
+      <div class="row-3">
+        <div class="field" style="grid-column: 1 / -1;">
+          <label>contrib-end age</label>
+          <input type="number" value="${a.contributionEndAge ?? 100}" data-id="${a.id}" data-field="contributionEndAge" min="0" max="120" step="1" style="width:100%;">
         </div>
       </div>
     </div>
@@ -834,7 +843,9 @@ function computeProjection() {
 
     // Apply returns + contributions to each asset
     for (let i = 0; i < assets.length; i++) {
-      assetBalances[i] = assetBalances[i] * (1 + assetMonthlyReturns[i]) + assets[i].monthly;
+      const endAge = assets[i].contributionEndAge ?? 100;
+      const contrib = ageNow <= endAge ? assets[i].monthly : 0;
+      assetBalances[i] = assetBalances[i] * (1 + assetMonthlyReturns[i]) + contrib;
     }
 
     // Deduct this month's expenses proportionally across all assets
