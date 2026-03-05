@@ -756,7 +756,7 @@ function renderAssets() {
       <div class="asset-card-header">
         <div class="asset-card-header-left">
           <span class="asset-dot" style="background: ${a.color}"></span>
-          <span class="asset-card-title">${a.type === 'custom' ? `<input type="text" value="${a.label}" data-id="${a.id}" data-field="label" style="background:transparent;border:none;color:var(--text);font-size:0.75rem;font-weight:bold;width:120px;outline:none;font-family:inherit;">` : a.label}</span>
+          <span class="asset-card-title"><input type="text" value="${a.label}" data-id="${a.id}" data-field="label" style="background:transparent;border:none;color:var(--text);font-size:0.75rem;font-weight:bold;width:120px;outline:none;font-family:inherit;"></span>
         </div>
         <button class="btn-remove" onclick="removeAsset(${a.id})">[x]</button>
       </div>
