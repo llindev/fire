@@ -756,7 +756,7 @@ function renderAssets() {
       <div class="asset-card-header">
         <div class="asset-card-header-left">
           <span class="asset-dot" style="background: ${a.color}"></span>
-          <span class="asset-card-title">${a.type === 'custom' ? `<input type="text" value="${a.label}" data-id="${a.id}" data-field="label" style="background:transparent;border:none;color:var(--text);font-size:0.75rem;font-weight:bold;width:120px;outline:none;font-family:inherit;">` : a.label}</span>
+          <span class="asset-card-title"><input type="text" value="${a.label}" data-id="${a.id}" data-field="label" style="background:transparent;border:none;color:var(--text);font-size:0.75rem;font-weight:bold;width:120px;outline:none;font-family:inherit;"></span>
         </div>
         <button class="btn-remove" onclick="removeAsset(${a.id})">[x]</button>
       </div>
@@ -881,11 +881,22 @@ function computeProjection() {
 
   const yearlyTotal = [];
   const yearlyCumulativeExpenses = [];
+  const yearlyExpenses = [];
   const yearlyDebt = [];
   for (let y = 0; y <= years; y++) {
     yearlyTotal.push(totalValues[y * 12]);
     yearlyCumulativeExpenses.push(cumulativeExpensesByMonth[y * 12]);
+    yearlyExpenses.push(y === 0 ? 0 : cumulativeExpensesByMonth[y * 12] - cumulativeExpensesByMonth[(y - 1) * 12]);
     yearlyDebt.push(-debtTimeline[y * 12]); // negative for below-zero chart display
+  }
+
+  // Find first year where portfolio peaks (expenses exceed gross asset growth)
+  let portfolioPeakAge = null;
+  for (let y = 1; y <= years; y++) {
+    if (yearlyTotal[y] < yearlyTotal[y - 1]) {
+      portfolioPeakAge = currentAge + y;
+      break;
+    }
   }
 
   const finalNW = totalValues[totalMonths];
@@ -905,9 +916,11 @@ function computeProjection() {
     yearlyAssetData,
     yearlyTotal,
     yearlyCumulativeExpenses,
+    yearlyExpenses,
     yearlyDebt,
     finalNW,
     finalDebt,
+    portfolioPeakAge,
     assetsDepletedAge,
     totalSpent,
     expenseAtRetire,
@@ -962,6 +975,13 @@ function renderChart(proj) {
   chartMarkers = [
     { age: proj.retireAge, label: `retire`, color: '#c084fc' }
   ];
+  if (proj.portfolioPeakAge != null) {
+    chartMarkers.push({
+      age: proj.portfolioPeakAge,
+      label: 'exp>growth',
+      color: '#fb923c'
+    });
+  }
   if (proj.assetsDepletedAge != null) {
     chartMarkers.push({
       age: Math.floor(proj.assetsDepletedAge),
@@ -988,6 +1008,22 @@ function renderChart(proj) {
     });
   });
 
+  // Expenses dataset (annual spending line)
+  if (proj.yearlyExpenses.some(v => v > 0)) {
+    datasets.push({
+      label: 'expenses',
+      data: proj.yearlyExpenses,
+      backgroundColor: 'transparent',
+      borderColor: '#fb923c',
+      borderWidth: 1.5,
+      borderDash: [4, 3],
+      fill: false,
+      pointRadius: 0,
+      pointHitRadius: 8,
+      tension: 0.3
+    });
+  }
+
   // Debt dataset (below zero, red dashed)
   if (proj.finalDebt > 0) {
     datasets.push({
@@ -1010,6 +1046,9 @@ function renderChart(proj) {
   proj.yearlyAssetData.forEach(ad => {
     legendEl.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:${ad.color}"></span>${ad.label}</span>`;
   });
+  if (proj.yearlyExpenses.some(v => v > 0)) {
+    legendEl.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:#fb923c"></span>expenses</span>`;
+  }
   if (proj.finalDebt > 0) {
     legendEl.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:#f87171"></span>debt-projection</span>`;
   }
@@ -1047,6 +1086,9 @@ function renderChart(proj) {
                 if (item.dataset.label === 'debt-projection') {
                   const v = -item.raw;
                   return v > 0 ? `  debt-projection: ${fmtFull(v)}` : null;
+                }
+                if (item.dataset.label === 'expenses') {
+                  return item.raw > 0 ? `  expenses: ${fmtFull(item.raw)}/yr` : null;
                 }
                 return `  ${item.dataset.label}: ${fmtFull(item.raw)}`;
               }
