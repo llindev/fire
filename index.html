@@ -881,10 +881,12 @@ function computeProjection() {
 
   const yearlyTotal = [];
   const yearlyCumulativeExpenses = [];
+  const yearlyExpenses = [];
   const yearlyDebt = [];
   for (let y = 0; y <= years; y++) {
     yearlyTotal.push(totalValues[y * 12]);
     yearlyCumulativeExpenses.push(cumulativeExpensesByMonth[y * 12]);
+    yearlyExpenses.push(y === 0 ? 0 : cumulativeExpensesByMonth[y * 12] - cumulativeExpensesByMonth[(y - 1) * 12]);
     yearlyDebt.push(-debtTimeline[y * 12]); // negative for below-zero chart display
   }
 
@@ -905,6 +907,7 @@ function computeProjection() {
     yearlyAssetData,
     yearlyTotal,
     yearlyCumulativeExpenses,
+    yearlyExpenses,
     yearlyDebt,
     finalNW,
     finalDebt,
@@ -988,6 +991,22 @@ function renderChart(proj) {
     });
   });
 
+  // Expenses dataset (annual spending line)
+  if (proj.yearlyExpenses.some(v => v > 0)) {
+    datasets.push({
+      label: 'expenses',
+      data: proj.yearlyExpenses,
+      backgroundColor: 'transparent',
+      borderColor: '#fb923c',
+      borderWidth: 1.5,
+      borderDash: [4, 3],
+      fill: false,
+      pointRadius: 0,
+      pointHitRadius: 8,
+      tension: 0.3
+    });
+  }
+
   // Debt dataset (below zero, red dashed)
   if (proj.finalDebt > 0) {
     datasets.push({
@@ -1010,6 +1029,9 @@ function renderChart(proj) {
   proj.yearlyAssetData.forEach(ad => {
     legendEl.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:${ad.color}"></span>${ad.label}</span>`;
   });
+  if (proj.yearlyExpenses.some(v => v > 0)) {
+    legendEl.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:#fb923c"></span>expenses</span>`;
+  }
   if (proj.finalDebt > 0) {
     legendEl.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:#f87171"></span>debt-projection</span>`;
   }
@@ -1047,6 +1069,9 @@ function renderChart(proj) {
                 if (item.dataset.label === 'debt-projection') {
                   const v = -item.raw;
                   return v > 0 ? `  debt-projection: ${fmtFull(v)}` : null;
+                }
+                if (item.dataset.label === 'expenses') {
+                  return item.raw > 0 ? `  expenses: ${fmtFull(item.raw)}/yr` : null;
                 }
                 return `  ${item.dataset.label}: ${fmtFull(item.raw)}`;
               }
