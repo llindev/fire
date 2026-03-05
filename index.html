@@ -413,10 +413,6 @@
             <label for="currentAge">current-age</label>
             <input type="number" id="currentAge" value="30" min="18" max="80">
           </div>
-          <div class="field">
-            <label for="retireAge">retire-age</label>
-            <input type="number" id="retireAge" value="50" min="25" max="100">
-          </div>
         </div>
         <div class="field">
           <label for="inflation">inflation (%)</label>
@@ -482,16 +478,6 @@
           <div class="summary-label">total_spent</div>
           <div class="summary-value text-green" id="totalSpent">—</div>
           <div class="summary-sub">cumulative (infl. adj.)</div>
-        </div>
-        <div class="summary-card">
-          <div class="summary-label">net_worth</div>
-          <div class="summary-value text-blue" id="netRemaining">$0</div>
-          <div class="summary-sub" id="netRemainingLabel">at retire age</div>
-        </div>
-        <div class="summary-card">
-          <div class="summary-label">expense/mo</div>
-          <div class="summary-value text-purple" id="expenseAtRetire">$0</div>
-          <div class="summary-sub" id="expenseAtRetireLabel">at retire-age (infl. adj.)</div>
         </div>
       </div>
 
@@ -602,7 +588,6 @@ const STORAGE_KEY = 'fire-calc-state';
 function saveState() {
   const state = {
     currentAge: document.getElementById('currentAge').value,
-    retireAge: document.getElementById('retireAge').value,
     inflation: document.getElementById('inflation').value,
     assets,
     nextId,
@@ -618,7 +603,6 @@ function loadState() {
   try {
     const state = JSON.parse(raw);
     if (state.currentAge != null) document.getElementById('currentAge').value = state.currentAge;
-    if (state.retireAge != null) document.getElementById('retireAge').value = state.retireAge;
     if (state.inflation != null) document.getElementById('inflation').value = state.inflation;
     if (Array.isArray(state.assets)) assets = state.assets;
     if (state.nextId != null) nextId = state.nextId;
@@ -728,6 +712,7 @@ document.querySelectorAll('.asset-type-option').forEach(btn => {
 // ── Add asset ──
 function addAsset(type) {
   const def = ASSET_TYPES[type];
+  const currentAge = parseInt(document.getElementById('currentAge').value) || 30;
   const asset = {
     id: nextId++,
     type,
@@ -735,6 +720,7 @@ function addAsset(type) {
     color: def.color,
     balance: def.defaults.balance,
     monthly: def.defaults.monthly,
+    contributionEndAge: currentAge + 20,
     returnRate: def.defaults.returnRate
   };
   assets.push(asset);
@@ -774,6 +760,12 @@ function renderAssets() {
           <input type="number" value="${a.returnRate}" data-id="${a.id}" data-field="returnRate" min="-20" max="50" step="0.5">
         </div>
       </div>
+      <div class="row-3">
+        <div class="field" style="grid-column: 1 / -1;">
+          <label>contrib-end age</label>
+          <input type="number" value="${a.contributionEndAge ?? 100}" data-id="${a.id}" data-field="contributionEndAge" min="0" max="120" step="1" style="width:100%;">
+        </div>
+      </div>
     </div>
   `).join('');
 
@@ -797,7 +789,6 @@ function renderAssets() {
 // ── Projection engine ──
 function computeProjection() {
   const currentAge = parseInt(document.getElementById('currentAge').value) || 30;
-  const retireAge = parseInt(document.getElementById('retireAge').value) || 50;
   const inflationRate = parseFloat(document.getElementById('inflation').value) || 3;
 
   const years = Math.max(100 - currentAge, 1);
@@ -834,7 +825,9 @@ function computeProjection() {
 
     // Apply returns + contributions to each asset
     for (let i = 0; i < assets.length; i++) {
-      assetBalances[i] = assetBalances[i] * (1 + assetMonthlyReturns[i]) + assets[i].monthly;
+      const endAge = assets[i].contributionEndAge ?? 100;
+      const contrib = ageNow <= endAge ? assets[i].monthly : 0;
+      assetBalances[i] = assetBalances[i] * (1 + assetMonthlyReturns[i]) + contrib;
     }
 
     // Deduct this month's expenses proportionally across all assets
@@ -902,14 +895,6 @@ function computeProjection() {
   const finalNW = totalValues[totalMonths];
   const finalDebt = debt;
   const totalSpent = cumulativeExpensesByMonth[totalMonths];
-  const retireYears = Math.max(retireAge - currentAge, 0);
-  // Expense at retire: sum of items active at retireAge, inflation-adjusted
-  const retireInflFactor = Math.pow(1 + inflationRate / 100, retireYears);
-  const expenseAtRetire = expenses.reduce((sum, e) => {
-    if (retireAge >= e.startAge && retireAge <= e.endAge) return sum + e.amount * retireInflFactor;
-    return sum;
-  }, 0);
-  const nwAtRetire = totalValues[retireYears * 12];
 
   return {
     labels,
@@ -923,10 +908,7 @@ function computeProjection() {
     portfolioPeakAge,
     assetsDepletedAge,
     totalSpent,
-    expenseAtRetire,
-    nwAtRetire,
     currentAge,
-    retireAge,
     years
   };
 }
@@ -961,10 +943,6 @@ function updateSummary(proj) {
   }
 
   document.getElementById('totalSpent').textContent = fmt(proj.totalSpent);
-  document.getElementById('netRemaining').textContent = assets.length === 0 ? '$0' : fmt(proj.nwAtRetire);
-  document.getElementById('expenseAtRetire').textContent = fmt(proj.expenseAtRetire) + '/mo';
-  document.getElementById('expenseAtRetireLabel').textContent = `at age ${proj.retireAge} (infl. adj.)`;
-  document.getElementById('netRemainingLabel').textContent = `at retire age ${proj.retireAge}`;
 }
 
 // ── Render chart ──
@@ -972,9 +950,7 @@ function renderChart(proj) {
   const ctx = document.getElementById('projectionChart').getContext('2d');
 
   // Update markers (vertical lines) for key events
-  chartMarkers = [
-    { age: proj.retireAge, label: `retire`, color: '#c084fc' }
-  ];
+  chartMarkers = [];
   if (proj.portfolioPeakAge != null) {
     chartMarkers.push({
       age: proj.portfolioPeakAge,
@@ -1129,7 +1105,7 @@ function recalculate() {
 }
 
 // ── Listen to personal info changes ──
-['currentAge', 'retireAge', 'inflation'].forEach(id => {
+['currentAge', 'inflation'].forEach(id => {
   document.getElementById(id).addEventListener('input', recalculate);
 });
 
